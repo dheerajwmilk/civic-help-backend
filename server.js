@@ -36,7 +36,10 @@ const upload = multer({
   },
 });
 
-app.use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] }));
+const CORS_ORIGINS = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+  : ["http://localhost:5173", "http://127.0.0.1:5173"];
+app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 
 // Seed sample data if collection is empty
@@ -76,7 +79,7 @@ async function uploadToCloudinary(file) {
 const MAX_PENDING = 2;
 
 // POST /api/complaints - Create complaint (max 2 pending per user)
-app.post("/api/complaints", upload.single("image"), async (req, res) => {
+app.post("api/complaints", upload.single("image"), async (req, res) => {
   try {
     const { name, phone, email, category, urgency, location, description, existingComplaintIds } = req.body;
     if (!name || !phone || !email || !category || !location || !description) {
@@ -132,7 +135,7 @@ app.post("/api/complaints", upload.single("image"), async (req, res) => {
 });
 
 // GET /api/complaints/:id - Get complaint by ID
-app.get("/api/complaints/:id", async (req, res) => {
+app.get("api/complaints/:id", async (req, res) => {
   try {
     const id = req.params.id.toUpperCase();
     const complaint = await Complaint.findOne({ id });
@@ -146,7 +149,7 @@ app.get("/api/complaints/:id", async (req, res) => {
 });
 
 // GET /api/stats - Dashboard stats
-app.get("/api/stats", async (req, res) => {
+app.get("api/stats", async (req, res) => {
   try {
     const total = await Complaint.countDocuments();
     const resolved = await Complaint.countDocuments({ status: "Resolved" });

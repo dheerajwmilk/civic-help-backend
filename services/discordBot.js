@@ -12,6 +12,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import { Complaint } from "../models/Complaint.js";
+import { sendInProgressEmail, sendRejectedEmail, sendResolvedEmail } from "../mailer.js";
 
 const URGENCY_CATEGORY_NAMES = {
   low: "Low Urgency",
@@ -192,6 +193,15 @@ async function handleModalSubmit(interaction) {
       content: `Complaint ${id} updated: **${newStatus}**${remark ? ` — ${remark.slice(0, 100)}${remark.length > 100 ? "…" : ""}` : ""}`,
       ephemeral: true,
     }).catch(() => {});
+
+    // Send status email to complainant
+    if (newStatus === "In Progress") {
+      sendInProgressEmail(updated).catch((err) => console.error("[Mail] In progress email failed:", err));
+    } else if (newStatus === "Rejected") {
+      sendRejectedEmail(updated).catch((err) => console.error("[Mail] Rejected email failed:", err));
+    } else if (newStatus === "Resolved") {
+      sendResolvedEmail(updated).catch((err) => console.error("[Mail] Resolved email failed:", err));
+    }
 
     if (newStatus === "Resolved" || newStatus === "Rejected") {
       const actioner = interaction.user.tag || interaction.user.username;

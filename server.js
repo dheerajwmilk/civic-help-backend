@@ -11,6 +11,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { Complaint } from "./models/Complaint.js";
 import { Counter, getNextComplaintId } from "./models/Counter.js";
 import { initDiscordBot, sendComplaintToDiscord } from "./services/discordBot.js";
+import { sendReportReceivedEmail } from "./mailer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -180,6 +181,11 @@ app.post("/api/complaints", upload.array("images", 3), async (req, res) => {
     // Discord bot: create channel under urgency category and post complaint — non-blocking
     sendComplaintToDiscord(complaint.toObject()).catch((err) =>
       console.error("[Discord] Notification failed:", err)
+    );
+
+    // Email: report received
+    sendReportReceivedEmail(complaint).catch((err) =>
+      console.error("[Mail] Report received email failed:", err)
     );
 
     res.status(201).json(complaint);

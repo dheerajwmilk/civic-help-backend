@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
@@ -24,10 +25,16 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Multer config - memory storage for Cloudinary upload
+// Multer config - disk storage for large files (avoids memory issues on Render)
+const uploadDir = path.join(__dirname, "uploads-temp");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadDir),
+    filename: (req, file, cb) => cb(null, `img-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname) || ".jpg"}`),
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB per file
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/i;
     const ext = path.extname(file.originalname).slice(1);
@@ -40,7 +47,8 @@ const CORS_ORIGINS = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
   : ["http://localhost:5173", "http://127.0.0.1:5173"];
 app.use(cors({ origin: CORS_ORIGINS }));
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Seed sample data if collection is empty
 const seedData = [
@@ -62,17 +70,23 @@ async function seedIfEmpty() {
   }
 }
 
-// Upload image to Cloudinary
-async function uploadToCloudinary(file) {
+// Upload image to Cloudinary (streams from disk to avoid memory issues with large files)
+async function uploadToCloudinary(filePath) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder: "civic-complaints" },
       (err, result) => {
+        fs.unlink(filePath, () => {}); // cleanup temp file
         if (err) reject(err);
         else resolve(result?.secure_url);
       }
     );
-    uploadStream.end(file.buffer);
+    const readStream = fs.createReadStream(filePath);
+    readStream.on("error", (err) => {
+      fs.unlink(filePath, () => {});
+      reject(err);
+    });
+    readStream.pipe(uploadStream);
   });
 }
 
@@ -110,7 +124,7 @@ app.post("/api/complaints", upload.array("images", 3), async (req, res) => {
         return res.status(503).json({ error: "Image upload not configured. Set CLOUDINARY_* in .env" });
       }
       for (const file of files) {
-        const url = await uploadToCloudinary(file);
+        const url = await uploadToCloudinary(file.path);
         if (url) imageUrls.push(url);
       }
     }
@@ -137,8 +151,26 @@ app.post("/api/complaints", upload.array("images", 3), async (req, res) => {
 
     res.status(201).json(complaint);
   } catch (err) {
+    console.error("[Complaint] Create error:", err);
     res.status(500).json({ error: err.message || "Failed to create complaint" });
   }
+});
+
+// Multer error handler (file too large, etc.)
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "File too large. Maximum 15MB per image." });
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({ error: "Too many files. Maximum 3 images." });
+    }
+  }
+  if (err) {
+    console.error("[Server] Error:", err);
+    return res.status(500).json({ error: err.message || "Internal server error" });
+  }
+  next();
 });
 
 // GET /api/complaints/:id - Get complaint by ID

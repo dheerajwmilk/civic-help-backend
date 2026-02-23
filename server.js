@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import mongoose from "mongoose";
+import sharp from "sharp";
 import { v2 as cloudinary } from "cloudinary";
 import { Complaint } from "./models/Complaint.js";
 import { Counter, getNextComplaintId } from "./models/Counter.js";
@@ -16,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/civic-complaints";
+const MONGODB_URI = process.env.MONGODB_URI
 
 // Cloudinary config
 cloudinary.config({
@@ -67,6 +68,37 @@ async function seedIfEmpty() {
       { upsert: true }
     );
     console.log("Seeded sample complaints");
+  }
+}
+
+const COMPRESS_THRESHOLD = 2 * 1024 * 1024; // 2MB - compress if larger
+const MAX_DIMENSION = 1920; // max width/height in px
+const COMPRESS_QUALITY = 82;
+
+/**
+ * Compress image if it exceeds threshold. Returns path to file to upload (original or compressed).
+ */
+async function maybeCompressImage(filePath) {
+  const stats = fs.statSync(filePath);
+  if (stats.size <= COMPRESS_THRESHOLD) return filePath;
+
+  const ext = path.extname(filePath).toLowerCase();
+  const outPath = path.join(path.dirname(filePath), `compressed-${path.basename(filePath, ext)}.jpg`);
+
+  try {
+    let pipeline = sharp(filePath)
+      .rotate() // auto-orient from EXIF
+      .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: "inside", withoutEnlargement: true });
+
+    await pipeline
+      .jpeg({ quality: COMPRESS_QUALITY, mozjpeg: true })
+      .toFile(outPath);
+
+    fs.unlink(filePath, () => {});
+    return outPath;
+  } catch (err) {
+    console.warn("[Image] Compression failed, using original:", err.message);
+    return filePath;
   }
 }
 
@@ -124,7 +156,8 @@ app.post("/api/complaints", upload.array("images", 3), async (req, res) => {
         return res.status(503).json({ error: "Image upload not configured. Set CLOUDINARY_* in .env" });
       }
       for (const file of files) {
-        const url = await uploadToCloudinary(file.path);
+        const toUpload = await maybeCompressImage(file.path);
+        const url = await uploadToCloudinary(toUpload);
         if (url) imageUrls.push(url);
       }
     }

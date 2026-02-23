@@ -266,8 +266,13 @@ function buildComplaintEmbed(complaint, actioner) {
   if (complaint.proof) {
     fields.push({ name: "Proof", value: `[View Proof](${complaint.proof})`, inline: false });
   }
-  if (complaint.imageUrl) {
-    fields.push({ name: "Image", value: `[View Image](${complaint.imageUrl})`, inline: false });
+  const images = complaint.imageUrls?.length ? complaint.imageUrls : (complaint.imageUrl ? [complaint.imageUrl] : []);
+  if (images.length > 0) {
+    fields.push({
+      name: images.length === 1 ? "Image" : "Images",
+      value: images.map((url, i) => `[Image ${i + 1}](${url})`).join(" • "),
+      inline: false,
+    });
   }
 
   const footerText = actioner

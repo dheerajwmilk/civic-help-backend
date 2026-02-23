@@ -27,7 +27,7 @@ cloudinary.config({
 // Multer config - memory storage for Cloudinary upload
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/i;
     const ext = path.extname(file.originalname).slice(1);
@@ -82,7 +82,7 @@ const MAX_PENDING = 2;
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 // POST /api/complaints - Create complaint (max 2 pending per user)
-app.post("/api/complaints", upload.single("image"), async (req, res) => {
+app.post("/api/complaints", upload.array("images", 3), async (req, res) => {
   try {
     const { name, phone, email, category, urgency, location, description, existingComplaintIds } = req.body;
     if (!name || !phone || !email || !category || !location || !description) {
@@ -103,12 +103,16 @@ app.post("/api/complaints", upload.single("image"), async (req, res) => {
         });
       }
     }
-    let imageUrl = null;
-    if (req.file) {
+    let imageUrls = [];
+    const files = req.files || [];
+    if (files.length > 0) {
       if (!process.env.CLOUDINARY_CLOUD_NAME) {
         return res.status(503).json({ error: "Image upload not configured. Set CLOUDINARY_* in .env" });
       }
-      imageUrl = await uploadToCloudinary(req.file);
+      for (const file of files) {
+        const url = await uploadToCloudinary(file);
+        if (url) imageUrls.push(url);
+      }
     }
     const id = await getNextComplaintId();
     const complaint = await Complaint.create({
@@ -123,7 +127,7 @@ app.post("/api/complaints", upload.single("image"), async (req, res) => {
       status: "Pending",
       progress: 20,
       date: new Date().toISOString().split("T")[0],
-      imageUrl,
+      imageUrls,
     });
 
     // Discord bot: create channel under urgency category and post complaint — non-blocking

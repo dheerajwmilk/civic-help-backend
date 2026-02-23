@@ -13,6 +13,7 @@ const complaintSchema = new mongoose.Schema({
   progress: { type: Number, default: 20 },
   date: { type: String, required: true },
   imageUrl: { type: String, default: null },
+  imageUrls: { type: [String], default: [] },
   remarks: { type: String, default: null },
   proof: { type: String, default: null },
 });

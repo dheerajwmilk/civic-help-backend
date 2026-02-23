@@ -216,7 +216,7 @@ async function handleModalSubmit(interaction) {
         .addFields(
           { name: "Complaint ID", value: id, inline: true },
           { name: "Category", value: updated.category, inline: true },
-          { name: "Location", value: updated.location, inline: true },
+          { name: "Location", value: formatLocationWithLink(updated.location), inline: true },
           { name: "Remark", value: remark, inline: false },
           { name: "Actioned by", value: actioner, inline: true }
         );
@@ -247,6 +247,25 @@ async function handleModalSubmit(interaction) {
 
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID || "1475071667528007864";
 
+function parseLocationCoords(location) {
+  if (!location || typeof location !== "string") return null;
+  const match = location.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+  if (!match) return null;
+  const lat = parseFloat(match[1]);
+  const lng = parseFloat(match[2]);
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+function formatLocationWithLink(location) {
+  const coords = parseLocationCoords(location);
+  if (coords) {
+    const mapUrl = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+    return `[${location}](${mapUrl})`;
+  }
+  return location;
+}
+
 /**
  * Build embed from complaint (including remarks/proof when set)
  * @param {Object} complaint - Complaint document
@@ -261,7 +280,7 @@ function buildComplaintEmbed(complaint, actioner) {
     { name: "Complaint ID", value: complaint.id, inline: true },
     { name: "Urgency", value: `${emoji} ${urgency.charAt(0).toUpperCase() + urgency.slice(1)}`, inline: true },
     { name: "Category", value: complaint.category, inline: true },
-    { name: "Location", value: complaint.location, inline: true },
+    { name: "Location", value: formatLocationWithLink(complaint.location), inline: true },
     { name: "Date", value: complaint.date, inline: true },
     { name: "Status", value: complaint.status || "Pending", inline: true },
     { name: "Name", value: complaint.name, inline: true },

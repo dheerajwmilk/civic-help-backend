@@ -58,7 +58,7 @@ export async function sendReportReceivedEmail(complaint) {
 export async function sendInProgressEmail(complaint) {
   const trackUrl = getTrackUrl(complaint.id);
   const subject = `Complaint In Progress — ${complaint.id}`;
-  const textPart = `Your report is being verified and our team will reach your location within 2-3 days.\n\nTrack your complaint: ${trackUrl}`;
+  const textPart = `Your report is being verified and our team will reach your location within WORKING DAYS.\n\nTrack your complaint: ${trackUrl}`;
   const htmlPart = `
     <p>Your report is being verified and our team will reach your location within 2-3 days.</p>
     <p><a href="${trackUrl}">Track your complaint</a></p>
